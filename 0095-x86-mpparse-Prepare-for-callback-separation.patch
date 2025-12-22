@@ -1,0 +1,90 @@
+From d555ede7e9585d84328ce012d07f32318499670b Mon Sep 17 00:00:00 2001
+From: Thomas Gleixner <tglx@linutronix.de>
+Date: Tue, 13 Feb 2024 22:05:04 +0100
+Subject: [PATCH 095/280] x86/mpparse: Prepare for callback separation
+
+In preparation of splitting the get_smp_config() callback, rename
+default_get_smp_config() to mpparse_get_smp_config() and provide an early
+and late wrapper.
+
+Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
+Tested-by: Michael Kelley <mhklinux@outlook.com>
+Tested-by: Sohil Mehta <sohil.mehta@intel.com>
+Link: https://lore.kernel.org/r/20240212154639.433811243@linutronix.de
+---
+ arch/x86/include/asm/mpspec.h | 12 ++++++++----
+ arch/x86/kernel/mpparse.c     | 12 +++++++++++-
+ arch/x86/kernel/x86_init.c    |  2 +-
+ 3 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/arch/x86/include/asm/mpspec.h b/arch/x86/include/asm/mpspec.h
+index c9fc46f768a3..530f6c938572 100644
+--- a/arch/x86/include/asm/mpspec.h
++++ b/arch/x86/include/asm/mpspec.h
+@@ -60,12 +60,16 @@ static inline void early_get_smp_config(void)
+ extern void e820__memblock_alloc_reserved_mpc_new(void);
+ extern int enable_update_mptable;
+ extern void mpparse_find_mptable(void);
+-extern void default_get_smp_config(unsigned int early);
++extern void mpparse_parse_early_smp_config(void);
++extern void mpparse_parse_smp_config(void);
++extern void mpparse_get_smp_config(unsigned int early);
+ #else
+ static inline void e820__memblock_alloc_reserved_mpc_new(void) { }
+-#define enable_update_mptable	0
+-#define mpparse_find_mptable	x86_init_noop
+-#define default_get_smp_config	x86_init_uint_noop
++#define enable_update_mptable		0
++#define mpparse_find_mptable		x86_init_noop
++#define mpparse_parse_early_smp_config	x86_init_noop
++#define mpparse_parse_smp_config	x86_init_noop
++#define mpparse_get_smp_config		x86_init_uint_noop
+ #endif
+ 
+ int generic_processor_info(int apicid);
+diff --git a/arch/x86/kernel/mpparse.c b/arch/x86/kernel/mpparse.c
+index 86acccdbd631..b22093d2265b 100644
+--- a/arch/x86/kernel/mpparse.c
++++ b/arch/x86/kernel/mpparse.c
+@@ -473,7 +473,7 @@ static int __init check_physptr(struct mpf_intel *mpf, unsigned int early)
+ /*
+  * Scan the memory blocks for an SMP configuration block.
+  */
+-void __init default_get_smp_config(unsigned int early)
++void __init mpparse_get_smp_config(unsigned int early)
+ {
+ 	struct mpf_intel *mpf;
+ 
+@@ -538,6 +538,16 @@ void __init default_get_smp_config(unsigned int early)
+ 	early_memunmap(mpf, sizeof(*mpf));
+ }
+ 
++void __init mpparse_parse_early_smp_config(void)
++{
++	mpparse_get_smp_config(true);
++}
++
++void __init mpparse_parse_smp_config(void)
++{
++	mpparse_get_smp_config(false);
++}
++
+ static void __init smp_reserve_memory(struct mpf_intel *mpf)
+ {
+ 	memblock_reserve(mpf->physptr, get_mpc_size(mpf->physptr));
+diff --git a/arch/x86/kernel/x86_init.c b/arch/x86/kernel/x86_init.c
+index 0bbef495a43f..5d86d5782971 100644
+--- a/arch/x86/kernel/x86_init.c
++++ b/arch/x86/kernel/x86_init.c
+@@ -71,7 +71,7 @@ struct x86_init_ops x86_init __initdata = {
+ 	.mpparse = {
+ 		.setup_ioapic_ids	= x86_init_noop,
+ 		.find_mptable		= mpparse_find_mptable,
+-		.get_smp_config		= default_get_smp_config,
++		.get_smp_config		= mpparse_get_smp_config,
+ 	},
+ 
+ 	.irqs = {
+-- 
+2.43.0
+

@@ -1,0 +1,59 @@
+From f2f4ecba8f96ea25a78f49bdfcbcb8d5716bec2e Mon Sep 17 00:00:00 2001
+From: "Rafael J. Wysocki" <rafael.j.wysocki@intel.com>
+Date: Fri, 28 Mar 2025 21:44:50 +0100
+Subject: [PATCH 259/280] cpufreq: Use locking guard and __free() in
+ cpufreq_update_policy()
+
+Instead of using cpufreq_cpu_acquire() and cpufreq_cpu_release() in
+cpufreq_update_policy(), which is the last user of these functions,
+make it use __free() for policy reference counting cleanup and the
+"write" locking guard for policy locking.
+
+No intentional functional impact.
+
+Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+Acked-by: Viresh Kumar <viresh.kumar@linaro.org>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Acked-by: Sudeep Holla <sudeep.holla@arm.com>
+Tested-by: Sudeep Holla <sudeep.holla@arm.com>
+Link: https://patch.msgid.link/22654186.EfDdHjke4D@rjwysocki.net
+---
+ drivers/cpufreq/cpufreq.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
+index ff956a98d830..763904e9748f 100644
+--- a/drivers/cpufreq/cpufreq.c
++++ b/drivers/cpufreq/cpufreq.c
+@@ -2694,23 +2694,23 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
+  */
+ void cpufreq_update_policy(unsigned int cpu)
+ {
+-	struct cpufreq_policy *policy = cpufreq_cpu_acquire(cpu);
++	struct cpufreq_policy *policy __free(put_cpufreq_policy);
+ 
++	policy = cpufreq_cpu_get(cpu);
+ 	if (!policy)
+ 		return;
+ 
++	guard(cpufreq_policy_write)(policy);
++
+ 	/*
+ 	 * BIOS might change freq behind our back
+ 	 * -> ask driver for current freq and notify governors about a change
+ 	 */
+ 	if (cpufreq_driver->get && has_target() &&
+ 	    (cpufreq_suspended || WARN_ON(!cpufreq_verify_current_freq(policy, false))))
+-		goto unlock;
++		return;
+ 
+ 	refresh_frequency_limits(policy);
+-
+-unlock:
+-	cpufreq_cpu_release(policy);
+ }
+ EXPORT_SYMBOL(cpufreq_update_policy);
+ 
+-- 
+2.43.0
+

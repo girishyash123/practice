@@ -1,0 +1,39 @@
+From b614c509ac26364204c38d3b09fce3307e06c8c3 Mon Sep 17 00:00:00 2001
+From: "Matthew Wilcox (Oracle)" <willy@infradead.org>
+Date: Thu, 28 Dec 2023 08:57:44 +0000
+Subject: [PATCH 026/280] slub: use alloc_pages_node() in alloc_slab_page()
+
+For no apparent reason, we were open-coding alloc_pages_node() in this
+function.
+
+Link: https://lkml.kernel.org/r/20231228085748.1083901-3-willy@infradead.org
+Signed-off-by: Matthew Wilcox (Oracle) <willy@infradead.org>
+Acked-by: David Rientjes <rientjes@google.com>
+Cc: Hyeonggon Yoo <42.hyeyoo@gmail.com>
+Cc: Johannes Weiner <hannes@cmpxchg.org>
+Cc: Vlastimil Babka <vbabka@suse.cz>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+---
+ mm/slub.c | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/mm/slub.c b/mm/slub.c
+index 891742e5932a..a5420be89c8c 100644
+--- a/mm/slub.c
++++ b/mm/slub.c
+@@ -1877,11 +1877,7 @@ static inline struct slab *alloc_slab_page(gfp_t flags, int node,
+ 	struct slab *slab;
+ 	unsigned int order = oo_order(oo);
+ 
+-	if (node == NUMA_NO_NODE)
+-		folio = (struct folio *)alloc_pages(flags, order);
+-	else
+-		folio = (struct folio *)__alloc_pages_node(node, flags, order);
+-
++	folio = (struct folio *)alloc_pages_node(node, flags, order);
+ 	if (!folio)
+ 		return NULL;
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,34 @@
+From b10bb4be1dc449b82a18cbfdab9459b47c8d7515 Mon Sep 17 00:00:00 2001
+From: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Date: Mon, 24 Jun 2024 09:11:08 -0700
+Subject: [PATCH 142/280] x86/cpufeatures: Add HWP highest perf change feature
+ flag
+
+When CPUID[6].EAX[15] is set to 1, this CPU supports notification for
+HWP (Hardware P-states) highest performance change.
+
+Add a feature flag to check if the CPU supports HWP highest performance
+change.
+
+Signed-off-by: Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>
+Link: https://patch.msgid.link/20240624161109.1427640-2-srinivas.pandruvada@linux.intel.com
+Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+---
+ arch/x86/include/asm/cpufeatures.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/x86/include/asm/cpufeatures.h b/arch/x86/include/asm/cpufeatures.h
+index 363ea4808d96..b29f5713a028 100644
+--- a/arch/x86/include/asm/cpufeatures.h
++++ b/arch/x86/include/asm/cpufeatures.h
+@@ -362,6 +362,7 @@
+ #define X86_FEATURE_HWP_EPP		(14*32+10) /* "hwp_epp" HWP Energy Perf. Preference */
+ #define X86_FEATURE_HWP_PKG_REQ		(14*32+11) /* "hwp_pkg_req" HWP Package Level Request */
+ #define X86_FEATURE_HFI			(14*32+19) /* "hfi" Hardware Feedback Interface */
++#define X86_FEATURE_HWP_HIGHEST_PERF_CHANGE (14*32+15) /* "" HWP Highest perf change */
+ 
+ /* AMD SVM Feature Identification, CPUID level 0x8000000a (EDX), word 15 */
+ #define X86_FEATURE_NPT			(15*32+ 0) /* "npt" Nested Page Table support */
+-- 
+2.43.0
+

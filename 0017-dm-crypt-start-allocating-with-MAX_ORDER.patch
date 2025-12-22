@@ -1,0 +1,34 @@
+From 569640ec34192254882a72fa509a3d9a5227829a Mon Sep 17 00:00:00 2001
+From: Mikulas Patocka <mpatocka@redhat.com>
+Date: Fri, 17 Nov 2023 18:38:33 +0100
+Subject: [PATCH 017/280] dm-crypt: start allocating with MAX_ORDER
+
+Commit 23baf831a32c ("mm, treewide: redefine MAX_ORDER sanely")
+changed the meaning of MAX_ORDER from exclusive to inclusive. So, we
+can allocate compound pages with up to 1 << MAX_ORDER pages.
+
+Reflect this change in dm-crypt and start trying to allocate compound
+pages with MAX_ORDER.
+
+Signed-off-by: Mikulas Patocka <mpatocka@redhat.com>
+Signed-off-by: Mike Snitzer <snitzer@kernel.org>
+---
+ drivers/md/dm-crypt.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/md/dm-crypt.c b/drivers/md/dm-crypt.c
+index 5315fd261c23..9a4b4932438f 100644
+--- a/drivers/md/dm-crypt.c
++++ b/drivers/md/dm-crypt.c
+@@ -1679,7 +1679,7 @@ static struct bio *crypt_alloc_buffer(struct dm_crypt_io *io, unsigned int size)
+ 	unsigned int nr_iovecs = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+ 	gfp_t gfp_mask = GFP_NOWAIT | __GFP_HIGHMEM;
+ 	unsigned int remaining_size;
+-	unsigned int order = MAX_ORDER - 1;
++	unsigned int order = MAX_ORDER;
+ 
+ retry:
+ 	if (unlikely(gfp_mask & __GFP_DIRECT_RECLAIM))
+-- 
+2.43.0
+

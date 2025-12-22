@@ -1,0 +1,72 @@
+From 315389ea3831a4df16c2e52a9359618936671cf4 Mon Sep 17 00:00:00 2001
+From: "Borislav Petkov (AMD)" <bp@alien8.de>
+Date: Wed, 1 Nov 2023 11:14:59 +0100
+Subject: [PATCH 031/280] x86/CPU/AMD: Carve out the erratum 1386 fix
+
+Call it on the affected CPU generations.
+
+No functional changes.
+
+Signed-off-by: Borislav Petkov (AMD) <bp@alien8.de>
+Reviewed-by: Nikolay Borisov <nik.borisov@suse.com>
+Link: http://lore.kernel.org/r/20231120104152.13740-3-bp@alien8.de
+---
+ arch/x86/kernel/cpu/amd.c | 24 +++++++++++++++---------
+ 1 file changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
+index 9c8ac072c42f..d48d10e2f498 100644
+--- a/arch/x86/kernel/cpu/amd.c
++++ b/arch/x86/kernel/cpu/amd.c
+@@ -988,6 +988,19 @@ static void init_amd_bd(struct cpuinfo_x86 *c)
+ 	clear_rdrand_cpuid_bit(c);
+ }
+ 
++static void fix_erratum_1386(struct cpuinfo_x86 *c)
++{
++	/*
++	 * Work around Erratum 1386.  The XSAVES instruction malfunctions in
++	 * certain circumstances on Zen1/2 uarch, and not all parts have had
++	 * updated microcode at the time of writing (March 2023).
++	 *
++	 * Affected parts all have no supervisor XSAVE states, meaning that
++	 * the XSAVEC instruction (which works fine) is equivalent.
++	 */
++	clear_cpu_cap(c, X86_FEATURE_XSAVES);
++}
++
+ void init_spectral_chicken(struct cpuinfo_x86 *c)
+ {
+ #ifdef CONFIG_CPU_UNRET_ENTRY
+@@ -1008,15 +1021,6 @@ void init_spectral_chicken(struct cpuinfo_x86 *c)
+ 		}
+ 	}
+ #endif
+-	/*
+-	 * Work around Erratum 1386.  The XSAVES instruction malfunctions in
+-	 * certain circumstances on Zen1/2 uarch, and not all parts have had
+-	 * updated microcode at the time of writing (March 2023).
+-	 *
+-	 * Affected parts all have no supervisor XSAVE states, meaning that
+-	 * the XSAVEC instruction (which works fine) is equivalent.
+-	 */
+-	clear_cpu_cap(c, X86_FEATURE_XSAVES);
+ }
+ 
+ static void init_amd_zn(struct cpuinfo_x86 *c)
+@@ -1085,10 +1089,12 @@ static void zenbleed_check(struct cpuinfo_x86 *c)
+ 
+ static void init_amd_zen(struct cpuinfo_x86 *c)
+ {
++	fix_erratum_1386(c);
+ }
+ 
+ static void init_amd_zen2(struct cpuinfo_x86 *c)
+ {
++	fix_erratum_1386(c);
+ }
+ 
+ static void init_amd_zen3(struct cpuinfo_x86 *c)
+-- 
+2.43.0
+

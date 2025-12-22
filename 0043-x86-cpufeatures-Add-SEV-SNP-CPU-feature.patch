@@ -1,0 +1,105 @@
+From ea88badf8b8991f16c06c3037d5ea6442ffc5d26 Mon Sep 17 00:00:00 2001
+From: Brijesh Singh <brijesh.singh@amd.com>
+Date: Thu, 25 Jan 2024 22:11:01 -0600
+Subject: [PATCH 043/280] x86/cpufeatures: Add SEV-SNP CPU feature
+
+Add CPU feature detection for Secure Encrypted Virtualization with
+Secure Nested Paging. This feature adds a strong memory integrity
+protection to help prevent malicious hypervisor-based attacks like
+data replay, memory re-mapping, and more.
+
+Since enabling the SNP CPU feature imposes a number of additional
+requirements on host initialization and handling legacy firmware APIs
+for SEV/SEV-ES guests, only introduce the CPU feature bit so that the
+relevant handling can be added, but leave it disabled via a
+disabled-features mask.
+
+Once all the necessary changes needed to maintain legacy SEV/SEV-ES
+support are introduced in subsequent patches, the SNP feature bit will
+be unmasked/enabled.
+
+Signed-off-by: Brijesh Singh <brijesh.singh@amd.com>
+Signed-off-by: Jarkko Sakkinen <jarkko@profian.com>
+Signed-off-by: Ashish Kalra <Ashish.Kalra@amd.com>
+Signed-off-by: Michael Roth <michael.roth@amd.com>
+Signed-off-by: Borislav Petkov (AMD) <bp@alien8.de>
+Link: https://lore.kernel.org/r/20240126041126.1927228-2-michael.roth@amd.com
+---
+ arch/x86/include/asm/cpufeatures.h       | 1 +
+ arch/x86/include/asm/disabled-features.h | 4 +++-
+ arch/x86/kernel/cpu/amd.c                | 5 +++--
+ tools/arch/x86/include/asm/cpufeatures.h | 1 +
+ 4 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/arch/x86/include/asm/cpufeatures.h b/arch/x86/include/asm/cpufeatures.h
+index 812e04403da4..e10898d864da 100644
+--- a/arch/x86/include/asm/cpufeatures.h
++++ b/arch/x86/include/asm/cpufeatures.h
+@@ -441,6 +441,7 @@
+ #define X86_FEATURE_SEV			(19*32+ 1) /* AMD Secure Encrypted Virtualization */
+ #define X86_FEATURE_VM_PAGE_FLUSH	(19*32+ 2) /* "" VM Page Flush MSR is supported */
+ #define X86_FEATURE_SEV_ES		(19*32+ 3) /* AMD Secure Encrypted Virtualization - Encrypted State */
++#define X86_FEATURE_SEV_SNP		(19*32+ 4) /* AMD Secure Encrypted Virtualization - Secure Nested Paging */
+ #define X86_FEATURE_V_TSC_AUX		(19*32+ 9) /* "" Virtual TSC_AUX */
+ #define X86_FEATURE_SME_COHERENT	(19*32+10) /* "" AMD hardware-enforced cache coherency */
+ #define X86_FEATURE_DEBUG_SWAP		(19*32+14) /* AMD SEV-ES full debug state swap support */
+diff --git a/arch/x86/include/asm/disabled-features.h b/arch/x86/include/asm/disabled-features.h
+index 702d93fdd10e..fc13bf759e3e 100644
+--- a/arch/x86/include/asm/disabled-features.h
++++ b/arch/x86/include/asm/disabled-features.h
+@@ -117,6 +117,8 @@
+ #define DISABLE_IBT	(1 << (X86_FEATURE_IBT & 31))
+ #endif
+ 
++#define DISABLE_SEV_SNP		(1 << (X86_FEATURE_SEV_SNP & 31))
++
+ /*
+  * Make sure to add features to the correct mask
+  */
+@@ -141,7 +143,7 @@
+ 			 DISABLE_ENQCMD)
+ #define DISABLED_MASK17	0
+ #define DISABLED_MASK18	(DISABLE_IBT)
+-#define DISABLED_MASK19	0
++#define DISABLED_MASK19	(DISABLE_SEV_SNP)
+ #define DISABLED_MASK20	0
+ #define DISABLED_MASK_CHECK BUILD_BUG_ON_ZERO(NCAPINTS != 21)
+ 
+diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
+index 394e710ab99c..03e6dcdf8181 100644
+--- a/arch/x86/kernel/cpu/amd.c
++++ b/arch/x86/kernel/cpu/amd.c
+@@ -683,8 +683,8 @@ static void early_detect_mem_encrypt(struct cpuinfo_x86 *c)
+ 	 *	      SME feature (set in scattered.c).
+ 	 *	      If the kernel has not enabled SME via any means then
+ 	 *	      don't advertise the SME feature.
+-	 *   For SEV: If BIOS has not enabled SEV then don't advertise the
+-	 *            SEV and SEV_ES feature (set in scattered.c).
++	 *   For SEV: If BIOS has not enabled SEV then don't advertise SEV and
++	 *	      any additional functionality based on it.
+ 	 *
+ 	 *   In all cases, since support for SME and SEV requires long mode,
+ 	 *   don't advertise the feature under CONFIG_X86_32.
+@@ -719,6 +719,7 @@ static void early_detect_mem_encrypt(struct cpuinfo_x86 *c)
+ clear_sev:
+ 		setup_clear_cpu_cap(X86_FEATURE_SEV);
+ 		setup_clear_cpu_cap(X86_FEATURE_SEV_ES);
++		setup_clear_cpu_cap(X86_FEATURE_SEV_SNP);
+ 	}
+ }
+ 
+diff --git a/tools/arch/x86/include/asm/cpufeatures.h b/tools/arch/x86/include/asm/cpufeatures.h
+index 953e6efead26..3af0db0390b8 100644
+--- a/tools/arch/x86/include/asm/cpufeatures.h
++++ b/tools/arch/x86/include/asm/cpufeatures.h
+@@ -439,6 +439,7 @@
+ #define X86_FEATURE_SEV			(19*32+ 1) /* AMD Secure Encrypted Virtualization */
+ #define X86_FEATURE_VM_PAGE_FLUSH	(19*32+ 2) /* "" VM Page Flush MSR is supported */
+ #define X86_FEATURE_SEV_ES		(19*32+ 3) /* AMD Secure Encrypted Virtualization - Encrypted State */
++#define X86_FEATURE_SEV_SNP		(19*32+ 4) /* AMD Secure Encrypted Virtualization - Secure Nested Paging */
+ #define X86_FEATURE_V_TSC_AUX		(19*32+ 9) /* "" Virtual TSC_AUX */
+ #define X86_FEATURE_SME_COHERENT	(19*32+10) /* "" AMD hardware-enforced cache coherency */
+ #define X86_FEATURE_DEBUG_SWAP		(19*32+14) /* AMD SEV-ES full debug state swap support */
+-- 
+2.43.0
+

@@ -1,0 +1,54 @@
+From 1383841ae18b1e07735930c4c0220b1cf9be3766 Mon Sep 17 00:00:00 2001
+From: John Allen <john.allen@amd.com>
+Date: Tue, 10 Oct 2023 20:44:32 +0000
+Subject: [PATCH 010/280] crypto: ccp - Dump SEV command buffer registers on
+ SEV command error
+
+PSP firmware may report additional error information in the SEV command
+buffer registers in situations where an error occurs as the result of an
+SEV command.  In this case, check if the command buffer registers have been
+modified and if so, dump the contents.
+
+Signed-off-by: John Allen <john.allen@amd.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Reviewed-by: Tom Lendacky <thomas.lendacky@amd.com>
+Signed-off-by: Herbert Xu <herbert@gondor.apana.org.au>
+---
+ drivers/crypto/ccp/sev-dev.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/crypto/ccp/sev-dev.c b/drivers/crypto/ccp/sev-dev.c
+index f97166fba9d9..fcaccd0b5a65 100644
+--- a/drivers/crypto/ccp/sev-dev.c
++++ b/drivers/crypto/ccp/sev-dev.c
+@@ -309,6 +309,7 @@ static int __sev_do_cmd_locked(int cmd, void *data, int *psp_ret)
+ {
+ 	struct psp_device *psp = psp_master;
+ 	struct sev_device *sev;
++	unsigned int cmdbuff_hi, cmdbuff_lo;
+ 	unsigned int phys_lsb, phys_msb;
+ 	unsigned int reg, ret = 0;
+ 	int buf_len;
+@@ -371,6 +372,19 @@ static int __sev_do_cmd_locked(int cmd, void *data, int *psp_ret)
+ 	if (FIELD_GET(PSP_CMDRESP_STS, reg)) {
+ 		dev_dbg(sev->dev, "sev command %#x failed (%#010lx)\n",
+ 			cmd, FIELD_GET(PSP_CMDRESP_STS, reg));
++
++		/*
++		 * PSP firmware may report additional error information in the
++		 * command buffer registers on error. Print contents of command
++		 * buffer registers if they changed.
++		 */
++		cmdbuff_hi = ioread32(sev->io_regs + sev->vdata->cmdbuff_addr_hi_reg);
++		cmdbuff_lo = ioread32(sev->io_regs + sev->vdata->cmdbuff_addr_lo_reg);
++		if (cmdbuff_hi != phys_msb || cmdbuff_lo != phys_lsb) {
++			dev_dbg(sev->dev, "Additional error information reported in cmdbuff:");
++			dev_dbg(sev->dev, "  cmdbuff hi: %#010x\n", cmdbuff_hi);
++			dev_dbg(sev->dev, "  cmdbuff lo: %#010x\n", cmdbuff_lo);
++		}
+ 		ret = -EIO;
+ 	} else {
+ 		ret = sev_write_init_ex_file_if_required(cmd);
+-- 
+2.43.0
+

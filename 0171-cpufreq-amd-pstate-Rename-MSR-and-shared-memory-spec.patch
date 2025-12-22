@@ -1,0 +1,153 @@
+From e52ea70b518f7d958c4c8958da198e2b16e71ebe Mon Sep 17 00:00:00 2001
+From: Dhananjay Ugwekar <Dhananjay.Ugwekar@amd.com>
+Date: Tue, 17 Sep 2024 09:14:35 +0000
+Subject: [PATCH 171/280] cpufreq/amd-pstate: Rename MSR and shared memory
+ specific functions
+
+Existing function names "cppc_*" and "pstate_*" for shared memory and
+MSR based systems are not intuitive enough, replace them with "shmem_*" and
+"msr_*" respectively.
+
+Signed-off-by: Dhananjay Ugwekar <Dhananjay.Ugwekar@amd.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Link: https://lore.kernel.org/r/20240917091434.10685-1-Dhananjay.Ugwekar@amd.com
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+---
+ drivers/cpufreq/amd-pstate.c | 60 ++++++++++++++++++------------------
+ 1 file changed, 30 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index c0fb95f2f102..cf7a22e02223 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -233,6 +233,26 @@ static int amd_pstate_get_energy_pref_index(struct amd_cpudata *cpudata)
+ 	return index;
+ }
+ 
++static void msr_update_perf(struct amd_cpudata *cpudata, u32 min_perf,
++			       u32 des_perf, u32 max_perf, bool fast_switch)
++{
++	if (fast_switch)
++		wrmsrl(MSR_AMD_CPPC_REQ, READ_ONCE(cpudata->cppc_req_cached));
++	else
++		wrmsrl_on_cpu(cpudata->cpu, MSR_AMD_CPPC_REQ,
++			      READ_ONCE(cpudata->cppc_req_cached));
++}
++
++DEFINE_STATIC_CALL(amd_pstate_update_perf, msr_update_perf);
++
++static inline void amd_pstate_update_perf(struct amd_cpudata *cpudata,
++					  u32 min_perf, u32 des_perf,
++					  u32 max_perf, bool fast_switch)
++{
++	static_call(amd_pstate_update_perf)(cpudata, min_perf, des_perf,
++					    max_perf, fast_switch);
++}
++
+ static int amd_pstate_set_epp(struct amd_cpudata *cpudata, u32 epp)
+ {
+ 	int ret;
+@@ -283,7 +303,7 @@ static int amd_pstate_set_energy_pref_index(struct amd_cpudata *cpudata,
+ 	return ret;
+ }
+ 
+-static inline int pstate_enable(bool enable)
++static inline int msr_enable(bool enable)
+ {
+ 	int ret, cpu;
+ 	unsigned long logical_proc_id_mask = 0;
+@@ -309,7 +329,7 @@ static inline int pstate_enable(bool enable)
+ 	return 0;
+ }
+ 
+-static int cppc_enable(bool enable)
++static int shmem_enable(bool enable)
+ {
+ 	int cpu, ret = 0;
+ 	struct cppc_perf_ctrls perf_ctrls;
+@@ -336,14 +356,14 @@ static int cppc_enable(bool enable)
+ 	return ret;
+ }
+ 
+-DEFINE_STATIC_CALL(amd_pstate_enable, pstate_enable);
++DEFINE_STATIC_CALL(amd_pstate_enable, msr_enable);
+ 
+ static inline int amd_pstate_enable(bool enable)
+ {
+ 	return static_call(amd_pstate_enable)(enable);
+ }
+ 
+-static int pstate_init_perf(struct amd_cpudata *cpudata)
++static int msr_init_perf(struct amd_cpudata *cpudata)
+ {
+ 	u64 cap1;
+ 
+@@ -362,7 +382,7 @@ static int pstate_init_perf(struct amd_cpudata *cpudata)
+ 	return 0;
+ }
+ 
+-static int cppc_init_perf(struct amd_cpudata *cpudata)
++static int shmem_init_perf(struct amd_cpudata *cpudata)
+ {
+ 	struct cppc_perf_caps cppc_perf;
+ 
+@@ -397,24 +417,14 @@ static int cppc_init_perf(struct amd_cpudata *cpudata)
+ 	return ret;
+ }
+ 
+-DEFINE_STATIC_CALL(amd_pstate_init_perf, pstate_init_perf);
++DEFINE_STATIC_CALL(amd_pstate_init_perf, msr_init_perf);
+ 
+ static inline int amd_pstate_init_perf(struct amd_cpudata *cpudata)
+ {
+ 	return static_call(amd_pstate_init_perf)(cpudata);
+ }
+ 
+-static void pstate_update_perf(struct amd_cpudata *cpudata, u32 min_perf,
+-			       u32 des_perf, u32 max_perf, bool fast_switch)
+-{
+-	if (fast_switch)
+-		wrmsrl(MSR_AMD_CPPC_REQ, READ_ONCE(cpudata->cppc_req_cached));
+-	else
+-		wrmsrl_on_cpu(cpudata->cpu, MSR_AMD_CPPC_REQ,
+-			      READ_ONCE(cpudata->cppc_req_cached));
+-}
+-
+-static void cppc_update_perf(struct amd_cpudata *cpudata,
++static void shmem_update_perf(struct amd_cpudata *cpudata,
+ 			     u32 min_perf, u32 des_perf,
+ 			     u32 max_perf, bool fast_switch)
+ {
+@@ -427,16 +437,6 @@ static void cppc_update_perf(struct amd_cpudata *cpudata,
+ 	cppc_set_perf(cpudata->cpu, &perf_ctrls);
+ }
+ 
+-DEFINE_STATIC_CALL(amd_pstate_update_perf, pstate_update_perf);
+-
+-static inline void amd_pstate_update_perf(struct amd_cpudata *cpudata,
+-					  u32 min_perf, u32 des_perf,
+-					  u32 max_perf, bool fast_switch)
+-{
+-	static_call(amd_pstate_update_perf)(cpudata, min_perf, des_perf,
+-					    max_perf, fast_switch);
+-}
+-
+ static inline bool amd_pstate_sample(struct amd_cpudata *cpudata)
+ {
+ 	u64 aperf, mperf, tsc;
+@@ -1878,9 +1878,9 @@ static int __init amd_pstate_init(void)
+ 			current_pstate_driver->adjust_perf = amd_pstate_adjust_perf;
+ 	} else {
+ 		pr_debug("AMD CPPC shared memory based functionality is supported\n");
+-		static_call_update(amd_pstate_enable, cppc_enable);
+-		static_call_update(amd_pstate_init_perf, cppc_init_perf);
+-		static_call_update(amd_pstate_update_perf, cppc_update_perf);
++		static_call_update(amd_pstate_enable, shmem_enable);
++		static_call_update(amd_pstate_init_perf, shmem_init_perf);
++		static_call_update(amd_pstate_update_perf, shmem_update_perf);
+ 	}
+ 
+ 	if (amd_pstate_prefcore) {
+-- 
+2.43.0
+

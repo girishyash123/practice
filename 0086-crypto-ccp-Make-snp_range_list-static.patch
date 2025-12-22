@@ -1,0 +1,33 @@
+From 93c228739793002d81ce69d200c5f40481658c34 Mon Sep 17 00:00:00 2001
+From: "Borislav Petkov (AMD)" <bp@alien8.de>
+Date: Sat, 3 Feb 2024 11:40:48 +0100
+Subject: [PATCH 086/280] crypto: ccp: Make snp_range_list static
+
+Fix:
+
+  drivers/crypto/ccp/sev-dev.c:93:28: sparse: sparse: symbol 'snp_range_list' was not declared. Should it be static?
+
+Reported-by: kernel test robot <lkp@intel.com>
+Closes: https://lore.kernel.org/oe-kbuild-all/202402031410.GTE3PJ1Y-lkp@intel.com
+Signed-off-by: Borislav Petkov (AMD) <bp@alien8.de>
+Link: https://lore.kernel.org/r/202402031410.GTE3PJ1Y-lkp@intel.com
+---
+ drivers/crypto/ccp/sev-dev.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/crypto/ccp/sev-dev.c b/drivers/crypto/ccp/sev-dev.c
+index 48c2f3e046d9..f44efbb89c34 100644
+--- a/drivers/crypto/ccp/sev-dev.c
++++ b/drivers/crypto/ccp/sev-dev.c
+@@ -107,7 +107,7 @@ static void *sev_init_ex_buffer;
+  *   Array containing range of pages that firmware transitions to HV-fixed
+  *   page state.
+  */
+-struct sev_data_range_list *snp_range_list;
++static struct sev_data_range_list *snp_range_list;
+ 
+ static inline bool sev_version_greater_or_equal(u8 maj, u8 min)
+ {
+-- 
+2.43.0
+

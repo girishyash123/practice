@@ -1,0 +1,39 @@
+From caaf5192f504e7ebd213eff53286d3bf024040ba Mon Sep 17 00:00:00 2001
+From: Thomas Gleixner <tglx@linutronix.de>
+Date: Tue, 13 Feb 2024 22:05:03 +0100
+Subject: [PATCH 097/280] x86/mpparse: Provide separate early/late callbacks
+
+The early argument of x86_init::mpparse::get_smp_config() is more than
+confusing. Provide two callbacks, one for each purpose.
+
+Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
+Tested-by: Michael Kelley <mhklinux@outlook.com>
+Tested-by: Sohil Mehta <sohil.mehta@intel.com>
+Link: https://lore.kernel.org/r/20240212154639.370491894@linutronix.de
+---
+ arch/x86/include/asm/x86_init.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/x86/include/asm/x86_init.h b/arch/x86/include/asm/x86_init.h
+index 7ca130c40a8f..c4ba032434ae 100644
+--- a/arch/x86/include/asm/x86_init.h
++++ b/arch/x86/include/asm/x86_init.h
+@@ -15,11 +15,15 @@ struct irq_domain;
+  * @setup_ioapic_ids:		platform specific ioapic id override
+  * @find_mptable:		Find MPTABLE early to reserve the memory region
+  * @get_smp_config:		get the smp configuration
++ * @early_parse_smp_cfg:	Parse the SMP configuration data early before initmem_init()
++ * @parse_smp_cfg:		Parse the SMP configuration data
+  */
+ struct x86_init_mpparse {
+ 	void (*setup_ioapic_ids)(void);
+ 	void (*find_mptable)(void);
+ 	void (*get_smp_config)(unsigned int early);
++	void (*early_parse_smp_cfg)(void);
++	void (*parse_smp_cfg)(void);
+ };
+ 
+ /**
+-- 
+2.43.0
+

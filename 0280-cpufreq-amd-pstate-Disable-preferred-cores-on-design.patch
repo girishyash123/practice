@@ -1,0 +1,44 @@
+From 0d589650475a36ce5ac5b8bc1ffc39bc04167b95 Mon Sep 17 00:00:00 2001
+From: Mario Limonciello <mario.limonciello@amd.com>
+Date: Mon, 9 Jun 2025 15:05:15 -0500
+Subject: [PATCH 280/280] cpufreq/amd-pstate: Disable preferred cores on
+ designs with workload classification
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On designs that have workload classification, it's preferred that
+the amd-hfi driver is used to provide hints to the scheduler of
+which cores to use instead of the amd-pstate driver.
+
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+Signed-off-by: Borislav Petkov (AMD) <bp@alien8.de>
+Reviewed-by: Gautham R. Shenoy <gautham.shenoy@amd.com>
+Reviewed-by: Perry Yuan <perry.yuan@amd.com>
+Acked-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
+Link: https://lore.kernel.org/20250609200518.3616080-11-superm1@kernel.org
+---
+ drivers/cpufreq/amd-pstate.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index d6f56b0b7612..39e5413e7ce4 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -824,6 +824,13 @@ static void amd_pstate_init_prefcore(struct amd_cpudata *cpudata)
+ 	if (!amd_pstate_prefcore)
+ 		return;
+ 
++	/* should use amd-hfi instead */
++	if (cpu_feature_enabled(X86_FEATURE_AMD_WORKLOAD_CLASS) &&
++	    IS_ENABLED(CONFIG_AMD_HFI)) {
++		amd_pstate_prefcore = false;
++		return;
++	}
++
+ 	cpudata->hw_prefcore = true;
+ 
+ 	/* Priorities must be initialized before ITMT support can be toggled on. */
+-- 
+2.43.0
+

@@ -1,0 +1,36 @@
+From 2decf457b89ae00f98894e333cb339efc282545f Mon Sep 17 00:00:00 2001
+From: Vlastimil Babka <vbabka@suse.cz>
+Date: Fri, 8 Sep 2023 09:57:13 +0200
+Subject: [PATCH 009/280] mm/slub: simplify the last resort slab order
+ calculation
+
+If calculate_order() can't fit even a single large object within
+slub_max_order, it will try using the smallest necessary order that may
+exceed slub_max_order but not MAX_ORDER.
+
+Currently this is done with a call to calc_slab_order() which is
+unnecessary. We can simply use get_order(size). No functional change.
+
+Signed-off-by: Vlastimil Babka <vbabka@suse.cz>
+Reviewed-by: Feng Tang <feng.tang@intel.com>
+Reviewed-and-tested-by: Jay Patel <jaypatel@linux.ibm.com>
+---
+ mm/slub.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/mm/slub.c b/mm/slub.c
+index f7940048138c..c6e694cb17b9 100644
+--- a/mm/slub.c
++++ b/mm/slub.c
+@@ -4193,7 +4193,7 @@ static inline int calculate_order(unsigned int size)
+ 	/*
+ 	 * Doh this slab cannot be placed using slub_max_order.
+ 	 */
+-	order = calc_slab_order(size, 1, MAX_ORDER, 1);
++	order = get_order(size);
+ 	if (order <= MAX_ORDER)
+ 		return order;
+ 	return -ENOSYS;
+-- 
+2.43.0
+

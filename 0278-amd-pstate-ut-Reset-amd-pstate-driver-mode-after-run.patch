@@ -1,0 +1,94 @@
+From 8a1dd6b25c8801c59465a513406ede4c53f4c25f Mon Sep 17 00:00:00 2001
+From: Swapnil Sapkal <swapnil.sapkal@amd.com>
+Date: Wed, 30 Apr 2025 06:42:06 +0000
+Subject: [PATCH 278/280] amd-pstate-ut: Reset amd-pstate driver mode after
+ running selftests
+
+In amd-pstate-ut, one of the basic test is to switch between all
+possible mode combinations. After running this test the mode of the
+amd-pstate driver is active mode. Store and reset the mode to its original
+state.
+
+Reviewed-by: Gautham R. Shenoy <gautham.shenoy@amd.com>
+Signed-off-by: Swapnil Sapkal <swapnil.sapkal@amd.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Link: https://lore.kernel.org/r/20250430064206.7402-1-swapnil.sapkal@amd.com
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+---
+ drivers/cpufreq/amd-pstate-ut.c | 19 ++++++++++++-------
+ drivers/cpufreq/amd-pstate.c    |  6 ++++++
+ drivers/cpufreq/amd-pstate.h    |  1 +
+ 3 files changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/cpufreq/amd-pstate-ut.c b/drivers/cpufreq/amd-pstate-ut.c
+index e671bc7d1550..30835d0e4994 100644
+--- a/drivers/cpufreq/amd-pstate-ut.c
++++ b/drivers/cpufreq/amd-pstate-ut.c
+@@ -242,6 +242,8 @@ static int amd_pstate_set_mode(enum amd_pstate_mode mode)
+ static int amd_pstate_ut_check_driver(u32 index)
+ {
+ 	enum amd_pstate_mode mode1, mode2 = AMD_PSTATE_DISABLE;
++	enum amd_pstate_mode orig_mode = amd_pstate_get_status();
++	int ret;
+ 
+ 	for (mode1 = AMD_PSTATE_DISABLE; mode1 < AMD_PSTATE_MAX; mode1++) {
+ 		int ret = amd_pstate_set_mode(mode1);
+@@ -251,16 +253,19 @@ static int amd_pstate_ut_check_driver(u32 index)
+ 			if (mode1 == mode2)
+ 				continue;
+ 			ret = amd_pstate_set_mode(mode2);
+-			if (ret) {
+-				pr_err("%s: failed to update status for %s->%s\n", __func__,
+-					amd_pstate_get_mode_string(mode1),
+-					amd_pstate_get_mode_string(mode2));
+-				return ret;
+-			}
++			if (ret)
++				goto out;
+ 		}
+ 	}
+ 
+-	return 0;
++out:
++	if (ret)
++		pr_warn("%s: failed to update status for %s->%s: %d\n", __func__,
++			amd_pstate_get_mode_string(mode1),
++			amd_pstate_get_mode_string(mode2), ret);
++
++	amd_pstate_set_mode(orig_mode);
++	return ret;
+ }
+ 
+ static int __init amd_pstate_ut_init(void)
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index 9c4680aeb8b1..d6f56b0b7612 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -1325,6 +1325,12 @@ static ssize_t amd_pstate_show_status(char *buf)
+ 	return sysfs_emit(buf, "%s\n", amd_pstate_mode_string[cppc_state]);
+ }
+ 
++int amd_pstate_get_status(void)
++{
++	return cppc_state;
++}
++EXPORT_SYMBOL_GPL(amd_pstate_get_status);
++
+ int amd_pstate_update_status(const char *buf, size_t size)
+ {
+ 	int mode_idx;
+diff --git a/drivers/cpufreq/amd-pstate.h b/drivers/cpufreq/amd-pstate.h
+index 2f7ae364d331..cb45fdca27a6 100644
+--- a/drivers/cpufreq/amd-pstate.h
++++ b/drivers/cpufreq/amd-pstate.h
+@@ -121,6 +121,7 @@ enum amd_pstate_mode {
+ 	AMD_PSTATE_MAX,
+ };
+ const char *amd_pstate_get_mode_string(enum amd_pstate_mode mode);
++int amd_pstate_get_status(void);
+ int amd_pstate_update_status(const char *buf, size_t size);
+ 
+ #endif /* _LINUX_AMD_PSTATE_H */
+-- 
+2.43.0
+

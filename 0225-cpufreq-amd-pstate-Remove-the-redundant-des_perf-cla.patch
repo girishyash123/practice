@@ -1,0 +1,35 @@
+From 8e4f869d5edf104b58d677b834f9ee5be1ff3db9 Mon Sep 17 00:00:00 2001
+From: Dhananjay Ugwekar <dhananjay.ugwekar@amd.com>
+Date: Wed, 5 Feb 2025 11:25:15 +0000
+Subject: [PATCH 225/280] cpufreq/amd-pstate: Remove the redundant des_perf
+ clamping in adjust_perf
+
+des_perf is later on clamped between min_perf and max_perf in
+amd_pstate_update. So, remove the redundant clamping from
+amd_pstate_adjust_perf.
+
+Signed-off-by: Dhananjay Ugwekar <dhananjay.ugwekar@amd.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Reviewed-by: Gautham R. Shenoy <gautham.shenoy@amd.com>
+Link: https://lore.kernel.org/r/20250205112523.201101-5-dhananjay.ugwekar@amd.com
+Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+---
+ drivers/cpufreq/amd-pstate.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index 08329e95b43e..864ac3fadc77 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -701,8 +701,6 @@ static void amd_pstate_adjust_perf(unsigned int cpu,
+ 	if (max_perf < min_perf)
+ 		max_perf = min_perf;
+ 
+-	des_perf = clamp_t(unsigned long, des_perf, min_perf, max_perf);
+-
+ 	amd_pstate_update(cpudata, min_perf, des_perf, max_perf, true,
+ 			policy->governor->flags);
+ 	cpufreq_cpu_put(policy);
+-- 
+2.43.0
+

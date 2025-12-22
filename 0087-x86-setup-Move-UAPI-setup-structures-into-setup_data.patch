@@ -1,0 +1,236 @@
+From 85e837e3745083ce1b3bdb70ff692513f8f9db41 Mon Sep 17 00:00:00 2001
+From: Thomas Zimmermann <tzimmermann@suse.de>
+Date: Fri, 12 Jan 2024 10:44:36 +0100
+Subject: [PATCH 087/280] x86/setup: Move UAPI setup structures into
+ setup_data.h
+
+The type definition of struct pci_setup_rom in <asm/pci.h> requires
+struct setup_data from <asm/bootparam.h>. Many drivers include
+<linux/pci.h>, but do not use boot parameters. Changes to bootparam.h or
+its included header files could easily trigger a large, unnecessary
+rebuild of the kernel.
+
+Moving struct setup_data and related code into its own header file
+avoids including <asm/bootparam.h> in <asm/pci.h>. Instead include the
+new header <asm/screen_data.h> and remove the include statement for
+x86_init.h, which is unnecessary but pulls in bootparams.h.
+
+Suggested-by: Ard Biesheuvel <ardb@kernel.org>
+Signed-off-by: Thomas Zimmermann <tzimmermann@suse.de>
+Signed-off-by: Borislav Petkov (AMD) <bp@alien8.de>
+Reviewed-by: Ard Biesheuvel <ardb@kernel.org>
+Link: https://lore.kernel.org/r/20240112095000.8952-2-tzimmermann@suse.de
+---
+ arch/x86/include/asm/pci.h             |  2 +-
+ arch/x86/include/uapi/asm/bootparam.h  | 72 +---------------------
+ arch/x86/include/uapi/asm/setup_data.h | 83 ++++++++++++++++++++++++++
+ 3 files changed, 85 insertions(+), 72 deletions(-)
+ create mode 100644 arch/x86/include/uapi/asm/setup_data.h
+
+diff --git a/arch/x86/include/asm/pci.h b/arch/x86/include/asm/pci.h
+index b40c462b4af3..f6100df3652e 100644
+--- a/arch/x86/include/asm/pci.h
++++ b/arch/x86/include/asm/pci.h
+@@ -10,7 +10,7 @@
+ #include <linux/numa.h>
+ #include <asm/io.h>
+ #include <asm/memtype.h>
+-#include <asm/x86_init.h>
++#include <asm/setup_data.h>
+ 
+ struct pci_sysdata {
+ 	int		domain;		/* PCI domain */
+diff --git a/arch/x86/include/uapi/asm/bootparam.h b/arch/x86/include/uapi/asm/bootparam.h
+index 01d19fc22346..4a38e7917756 100644
+--- a/arch/x86/include/uapi/asm/bootparam.h
++++ b/arch/x86/include/uapi/asm/bootparam.h
+@@ -2,21 +2,7 @@
+ #ifndef _ASM_X86_BOOTPARAM_H
+ #define _ASM_X86_BOOTPARAM_H
+ 
+-/* setup_data/setup_indirect types */
+-#define SETUP_NONE			0
+-#define SETUP_E820_EXT			1
+-#define SETUP_DTB			2
+-#define SETUP_PCI			3
+-#define SETUP_EFI			4
+-#define SETUP_APPLE_PROPERTIES		5
+-#define SETUP_JAILHOUSE			6
+-#define SETUP_CC_BLOB			7
+-#define SETUP_IMA			8
+-#define SETUP_RNG_SEED			9
+-#define SETUP_ENUM_MAX			SETUP_RNG_SEED
+-
+-#define SETUP_INDIRECT			(1<<31)
+-#define SETUP_TYPE_MAX			(SETUP_ENUM_MAX | SETUP_INDIRECT)
++#include <asm/setup_data.h>
+ 
+ /* ram_size flags */
+ #define RAMDISK_IMAGE_START_MASK	0x07FF
+@@ -48,22 +34,6 @@
+ #include <asm/ist.h>
+ #include <video/edid.h>
+ 
+-/* extensible setup data list node */
+-struct setup_data {
+-	__u64 next;
+-	__u32 type;
+-	__u32 len;
+-	__u8 data[];
+-};
+-
+-/* extensible setup indirect data node */
+-struct setup_indirect {
+-	__u32 type;
+-	__u32 reserved;  /* Reserved, must be set to zero. */
+-	__u64 len;
+-	__u64 addr;
+-};
+-
+ struct setup_header {
+ 	__u8	setup_sects;
+ 	__u16	root_flags;
+@@ -136,51 +106,11 @@ struct efi_info {
+  */
+ #define E820_MAX_ENTRIES_ZEROPAGE 128
+ 
+-/*
+- * The E820 memory region entry of the boot protocol ABI:
+- */
+-struct boot_e820_entry {
+-	__u64 addr;
+-	__u64 size;
+-	__u32 type;
+-} __attribute__((packed));
+-
+ /*
+  * Smallest compatible version of jailhouse_setup_data required by this kernel.
+  */
+ #define JAILHOUSE_SETUP_REQUIRED_VERSION	1
+ 
+-/*
+- * The boot loader is passing platform information via this Jailhouse-specific
+- * setup data structure.
+- */
+-struct jailhouse_setup_data {
+-	struct {
+-		__u16	version;
+-		__u16	compatible_version;
+-	} __attribute__((packed)) hdr;
+-	struct {
+-		__u16	pm_timer_address;
+-		__u16	num_cpus;
+-		__u64	pci_mmconfig_base;
+-		__u32	tsc_khz;
+-		__u32	apic_khz;
+-		__u8	standard_ioapic;
+-		__u8	cpu_ids[255];
+-	} __attribute__((packed)) v1;
+-	struct {
+-		__u32	flags;
+-	} __attribute__((packed)) v2;
+-} __attribute__((packed));
+-
+-/*
+- * IMA buffer setup data information from the previous kernel during kexec
+- */
+-struct ima_setup_data {
+-	__u64 addr;
+-	__u64 size;
+-} __attribute__((packed));
+-
+ /* The so-called "zeropage" */
+ struct boot_params {
+ 	struct screen_info screen_info;			/* 0x000 */
+diff --git a/arch/x86/include/uapi/asm/setup_data.h b/arch/x86/include/uapi/asm/setup_data.h
+new file mode 100644
+index 000000000000..b111b0c18544
+--- /dev/null
++++ b/arch/x86/include/uapi/asm/setup_data.h
+@@ -0,0 +1,83 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++#ifndef _UAPI_ASM_X86_SETUP_DATA_H
++#define _UAPI_ASM_X86_SETUP_DATA_H
++
++/* setup_data/setup_indirect types */
++#define SETUP_NONE			0
++#define SETUP_E820_EXT			1
++#define SETUP_DTB			2
++#define SETUP_PCI			3
++#define SETUP_EFI			4
++#define SETUP_APPLE_PROPERTIES		5
++#define SETUP_JAILHOUSE			6
++#define SETUP_CC_BLOB			7
++#define SETUP_IMA			8
++#define SETUP_RNG_SEED			9
++#define SETUP_ENUM_MAX			SETUP_RNG_SEED
++
++#define SETUP_INDIRECT			(1<<31)
++#define SETUP_TYPE_MAX			(SETUP_ENUM_MAX | SETUP_INDIRECT)
++
++#ifndef __ASSEMBLY__
++
++#include <linux/types.h>
++
++/* extensible setup data list node */
++struct setup_data {
++	__u64 next;
++	__u32 type;
++	__u32 len;
++	__u8 data[];
++};
++
++/* extensible setup indirect data node */
++struct setup_indirect {
++	__u32 type;
++	__u32 reserved;  /* Reserved, must be set to zero. */
++	__u64 len;
++	__u64 addr;
++};
++
++/*
++ * The E820 memory region entry of the boot protocol ABI:
++ */
++struct boot_e820_entry {
++	__u64 addr;
++	__u64 size;
++	__u32 type;
++} __attribute__((packed));
++
++/*
++ * The boot loader is passing platform information via this Jailhouse-specific
++ * setup data structure.
++ */
++struct jailhouse_setup_data {
++	struct {
++		__u16	version;
++		__u16	compatible_version;
++	} __attribute__((packed)) hdr;
++	struct {
++		__u16	pm_timer_address;
++		__u16	num_cpus;
++		__u64	pci_mmconfig_base;
++		__u32	tsc_khz;
++		__u32	apic_khz;
++		__u8	standard_ioapic;
++		__u8	cpu_ids[255];
++	} __attribute__((packed)) v1;
++	struct {
++		__u32	flags;
++	} __attribute__((packed)) v2;
++} __attribute__((packed));
++
++/*
++ * IMA buffer setup data information from the previous kernel during kexec
++ */
++struct ima_setup_data {
++	__u64 addr;
++	__u64 size;
++} __attribute__((packed));
++
++#endif /* __ASSEMBLY__ */
++
++#endif /* _UAPI_ASM_X86_SETUP_DATA_H */
+-- 
+2.43.0
+

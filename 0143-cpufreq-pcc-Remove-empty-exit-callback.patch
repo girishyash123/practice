@@ -1,0 +1,39 @@
+From 8aa4cdab8bb7b573e11fc5421cc62c8e8f175b07 Mon Sep 17 00:00:00 2001
+From: Viresh Kumar <viresh.kumar@linaro.org>
+Date: Thu, 4 Jul 2024 12:23:54 +0530
+Subject: [PATCH 143/280] cpufreq: pcc: Remove empty exit() callback
+
+The exit() callback is optional, remove the empty one.
+
+Signed-off-by: Viresh Kumar <viresh.kumar@linaro.org>
+Acked-by: Rafael J. Wysocki <rafael@kernel.org>
+---
+ drivers/cpufreq/pcc-cpufreq.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/drivers/cpufreq/pcc-cpufreq.c b/drivers/cpufreq/pcc-cpufreq.c
+index 6f8b5ea7aeae..771efbf51a48 100644
+--- a/drivers/cpufreq/pcc-cpufreq.c
++++ b/drivers/cpufreq/pcc-cpufreq.c
+@@ -562,18 +562,12 @@ static int pcc_cpufreq_cpu_init(struct cpufreq_policy *policy)
+ 	return result;
+ }
+ 
+-static int pcc_cpufreq_cpu_exit(struct cpufreq_policy *policy)
+-{
+-	return 0;
+-}
+-
+ static struct cpufreq_driver pcc_cpufreq_driver = {
+ 	.flags = CPUFREQ_CONST_LOOPS,
+ 	.get = pcc_get_freq,
+ 	.verify = pcc_cpufreq_verify,
+ 	.target = pcc_cpufreq_target,
+ 	.init = pcc_cpufreq_cpu_init,
+-	.exit = pcc_cpufreq_cpu_exit,
+ 	.name = "pcc-cpufreq",
+ };
+ 
+-- 
+2.43.0
+

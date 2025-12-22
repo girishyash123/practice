@@ -1,0 +1,94 @@
+From 5c53b30038c75474c228105365bc2448bd77aebe Mon Sep 17 00:00:00 2001
+From: Vlastimil Babka <vbabka@suse.cz>
+Date: Fri, 8 Sep 2023 12:18:09 +0200
+Subject: [PATCH 023/280] mm/slub: refactor calculate_order() and
+ calc_slab_order()
+
+After the previous cleanups, we can now move some code from
+calc_slab_order() to calculate_order() so it's executed just once, and
+do some more cleanups.
+
+- move the min_order and MAX_OBJS_PER_PAGE evaluation to
+  calculate_order().
+
+- change calc_slab_order() parameter min_objects to min_order
+
+Also make MAX_OBJS_PER_PAGE check more robust by considering also
+min_objects in addition to slub_min_order. Otherwise this is not a
+functional change.
+
+Signed-off-by: Vlastimil Babka <vbabka@suse.cz>
+Reviewed-by: Feng Tang <feng.tang@intel.com>
+Reviewed-and-tested-by: Jay Patel <jaypatel@linux.ibm.com>
+---
+ mm/slub.c | 23 ++++++++++++-----------
+ 1 file changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/mm/slub.c b/mm/slub.c
+index 86141e5164ca..63d281dfacdb 100644
+--- a/mm/slub.c
++++ b/mm/slub.c
+@@ -4110,17 +4110,12 @@ static unsigned int slub_min_objects;
+  * the smallest order which will fit the object.
+  */
+ static inline unsigned int calc_slab_order(unsigned int size,
+-		unsigned int min_objects, unsigned int max_order,
++		unsigned int min_order, unsigned int max_order,
+ 		unsigned int fract_leftover)
+ {
+-	unsigned int min_order = slub_min_order;
+ 	unsigned int order;
+ 
+-	if (order_objects(min_order, size) > MAX_OBJS_PER_PAGE)
+-		return get_order(size * MAX_OBJS_PER_PAGE) - 1;
+-
+-	for (order = max(min_order, (unsigned int)get_order(min_objects * size));
+-			order <= max_order; order++) {
++	for (order = min_order; order <= max_order; order++) {
+ 
+ 		unsigned int slab_size = (unsigned int)PAGE_SIZE << order;
+ 		unsigned int rem;
+@@ -4139,7 +4134,7 @@ static inline int calculate_order(unsigned int size)
+ 	unsigned int order;
+ 	unsigned int min_objects;
+ 	unsigned int max_objects;
+-	unsigned int nr_cpus;
++	unsigned int min_order;
+ 
+ 	min_objects = slub_min_objects;
+ 	if (!min_objects) {
+@@ -4152,14 +4147,20 @@ static inline int calculate_order(unsigned int size)
+ 		 * order on systems that appear larger than they are, and too
+ 		 * low order on systems that appear smaller than they are.
+ 		 */
+-		nr_cpus = num_present_cpus();
++		unsigned int nr_cpus = num_present_cpus();
+ 		if (nr_cpus <= 1)
+ 			nr_cpus = nr_cpu_ids;
+ 		min_objects = 4 * (fls(nr_cpus) + 1);
+ 	}
+-	max_objects = order_objects(slub_max_order, size);
++	/* min_objects can't be 0 because get_order(0) is undefined */
++	max_objects = max(order_objects(slub_max_order, size), 1U);
+ 	min_objects = min(min_objects, max_objects);
+ 
++	min_order = max_t(unsigned int, slub_min_order,
++			  get_order(min_objects * size));
++	if (order_objects(min_order, size) > MAX_OBJS_PER_PAGE)
++		return get_order(size * MAX_OBJS_PER_PAGE) - 1;
++
+ 	/*
+ 	 * Attempt to find best configuration for a slab. This works by first
+ 	 * attempting to generate a layout with the best possible configuration
+@@ -4176,7 +4177,7 @@ static inline int calculate_order(unsigned int size)
+ 	 * long as at least single object fits within slub_max_order.
+ 	 */
+ 	for (unsigned int fraction = 16; fraction > 1; fraction /= 2) {
+-		order = calc_slab_order(size, min_objects, slub_max_order,
++		order = calc_slab_order(size, min_order, slub_max_order,
+ 					fraction);
+ 		if (order <= slub_max_order)
+ 			return order;
+-- 
+2.43.0
+

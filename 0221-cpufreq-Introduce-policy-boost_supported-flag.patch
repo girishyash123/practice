@@ -1,0 +1,56 @@
+From 56c7fc526879f5b3c923e3f46966561234246746 Mon Sep 17 00:00:00 2001
+From: Viresh Kumar <viresh.kumar@linaro.org>
+Date: Thu, 23 Jan 2025 11:04:25 +0530
+Subject: [PATCH 221/280] cpufreq: Introduce policy->boost_supported flag
+
+It is possible to have a scenario where not all cpufreq policies support
+boost frequencies. And letting sysfs (or other parts of the kernel)
+enable boost feature for that policy isn't correct.
+
+Add a new flag, boost_supported, which will be set to true by the
+cpufreq core only if the freq table contains valid boost frequencies.
+
+Some cpufreq drivers though don't have boost frequencies in the
+freq-table, they can set this flag from their ->init() callbacks.
+
+Once all the drivers are updated to set the flag correctly, we can check
+it before enabling boost feature for a policy.
+
+Signed-off-by: Viresh Kumar <viresh.kumar@linaro.org>
+---
+ drivers/cpufreq/freq_table.c | 4 ++++
+ include/linux/cpufreq.h      | 3 +++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/drivers/cpufreq/freq_table.c b/drivers/cpufreq/freq_table.c
+index c4d4643b6ca6..1766e96758a1 100644
+--- a/drivers/cpufreq/freq_table.c
++++ b/drivers/cpufreq/freq_table.c
+@@ -367,6 +367,10 @@ int cpufreq_table_validate_and_sort(struct cpufreq_policy *policy)
+ 	if (ret)
+ 		return ret;
+ 
++	/* Driver's may have set this field already */
++	if (policy_has_boost_freq(policy))
++		policy->boost_supported = true;
++
+ 	return set_freq_table_sorted(policy);
+ }
+ 
+diff --git a/include/linux/cpufreq.h b/include/linux/cpufreq.h
+index 9f7b3facef9c..0561b037c68a 100644
+--- a/include/linux/cpufreq.h
++++ b/include/linux/cpufreq.h
+@@ -144,6 +144,9 @@ struct cpufreq_policy {
+ 	/* Per policy boost enabled flag. */
+ 	bool			boost_enabled;
+ 
++	/* Per policy boost supported flag. */
++	bool			boost_supported;
++
+ 	 /* Cached frequency lookup from cpufreq_driver_resolve_freq. */
+ 	unsigned int cached_target_freq;
+ 	unsigned int cached_resolved_idx;
+-- 
+2.43.0
+

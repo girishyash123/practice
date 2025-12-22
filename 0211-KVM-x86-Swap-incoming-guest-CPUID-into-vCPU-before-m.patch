@@ -1,0 +1,149 @@
+From b5998cc3f8a3dcdf88eab39d801eda2feda4fa76 Mon Sep 17 00:00:00 2001
+From: Sean Christopherson <seanjc@google.com>
+Date: Wed, 27 Nov 2024 17:33:58 -0800
+Subject: [PATCH 211/280] KVM: x86: Swap incoming guest CPUID into vCPU before
+ massaging in KVM_SET_CPUID2
+
+When handling KVM_SET_CPUID{,2}, swap the old and new CPUID arrays and
+lengths before processing the new CPUID, and simply undo the swap if
+setting the new CPUID fails for whatever reason.
+
+To keep the diff reasonable, continue passing the entry array and length
+to most helpers, and defer the more complete cleanup to future commits.
+
+For any sane VMM, setting "bad" CPUID state is not a hot path (or even
+something that is surviable), and setting guest CPUID before it's known
+good will allow removing all of KVM's infrastructure for processing CPUID
+entries directly (as opposed to operating on vcpu->arch.cpuid_entries).
+
+Reviewed-by: Maxim Levitsky <mlevitsk@redhat.com>
+Link: https://lore.kernel.org/r/20241128013424.4096668-32-seanjc@google.com
+Signed-off-by: Sean Christopherson <seanjc@google.com>
+---
+ arch/x86/kvm/cpuid.c | 60 +++++++++++++++++++++++++++++++-------------
+ 1 file changed, 42 insertions(+), 18 deletions(-)
+
+diff --git a/arch/x86/kvm/cpuid.c b/arch/x86/kvm/cpuid.c
+index c0bb8f5ff7b5..d768c11971ad 100644
+--- a/arch/x86/kvm/cpuid.c
++++ b/arch/x86/kvm/cpuid.c
+@@ -130,10 +130,10 @@ static inline struct kvm_cpuid_entry2 *cpuid_entry2_find(
+ 	return NULL;
+ }
+ 
+-static int kvm_check_cpuid(struct kvm_vcpu *vcpu,
+-			   struct kvm_cpuid_entry2 *entries,
+-			   int nent)
++static int kvm_check_cpuid(struct kvm_vcpu *vcpu)
+ {
++	struct kvm_cpuid_entry2 *entries = vcpu->arch.cpuid_entries;
++	int nent = vcpu->arch.cpuid_nent;
+ 	struct kvm_cpuid_entry2 *best;
+ 	u64 xfeatures;
+ 
+@@ -173,6 +173,19 @@ static int kvm_cpuid_check_equal(struct kvm_vcpu *vcpu, struct kvm_cpuid_entry2
+ 	struct kvm_cpuid_entry2 *orig;
+ 	int i;
+ 
++	/*
++	 * Apply runtime CPUID updates to the incoming CPUID entries to avoid
++	 * false positives due mismatches on KVM-owned feature flags.  Note,
++	 * runtime CPUID updates may consume other CPUID-driven vCPU state,
++	 * e.g. KVM or Xen CPUID bases.  Updating runtime state before full
++	 * CPUID processing is functionally correct only because any change in
++	 * CPUID is disallowed, i.e. using stale data is ok because the below
++	 * checks will reject the change.
++	 *
++	 * Note!  @e2 and @nent track the _old_ CPUID entries!
++	 */
++	kvm_update_cpuid_runtime(vcpu);
++
+ 	if (nent != vcpu->arch.cpuid_nent)
+ 		return -EINVAL;
+ 
+@@ -312,8 +325,10 @@ void kvm_update_cpuid_runtime(struct kvm_vcpu *vcpu)
+ }
+ EXPORT_SYMBOL_GPL(kvm_update_cpuid_runtime);
+ 
+-static bool kvm_cpuid_has_hyperv(struct kvm_cpuid_entry2 *entries, int nent)
++static bool kvm_cpuid_has_hyperv(struct kvm_vcpu *vcpu)
+ {
++	struct kvm_cpuid_entry2 *entries = vcpu->arch.cpuid_entries;
++	int nent = vcpu->arch.cpuid_nent;
+ 	struct kvm_cpuid_entry2 *entry;
+ 
+ 	entry = cpuid_entry2_find(entries, nent, HYPERV_CPUID_INTERFACE,
+@@ -369,8 +384,7 @@ static void kvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
+ 	vcpu->arch.cr4_guest_rsvd_bits =
+ 	    __cr4_reserved_bits(guest_cpuid_has, vcpu);
+ 
+-	kvm_hv_set_cpuid(vcpu, kvm_cpuid_has_hyperv(vcpu->arch.cpuid_entries,
+-						    vcpu->arch.cpuid_nent));
++	kvm_hv_set_cpuid(vcpu, kvm_cpuid_has_hyperv(vcpu));
+ 
+ 	/* Invoke the vendor callback only after the above state is updated. */
+ 	static_call(kvm_x86_vcpu_after_set_cpuid)(vcpu);
+@@ -413,6 +427,15 @@ static int kvm_set_cpuid(struct kvm_vcpu *vcpu, struct kvm_cpuid_entry2 *e2,
+ 
+ 	__kvm_update_cpuid_runtime(vcpu, e2, nent);
+ 
++	/*
++	 * Swap the existing (old) entries with the incoming (new) entries in
++	 * order to massage the new entries, e.g. to account for dynamic bits
++	 * that KVM controls, without clobbering the current guest CPUID, which
++	 * KVM needs to preserve in order to unwind on failure.
++	 */
++	swap(vcpu->arch.cpuid_entries, e2);
++	swap(vcpu->arch.cpuid_nent, nent);
++
+ 	/*
+ 	 * KVM does not correctly handle changing guest CPUID after KVM_RUN, as
+ 	 * MAXPHYADDR, GBPAGES support, AMD reserved bit behavior, etc.. aren't
+@@ -427,31 +450,32 @@ static int kvm_set_cpuid(struct kvm_vcpu *vcpu, struct kvm_cpuid_entry2 *e2,
+ 	if (kvm_vcpu_has_run(vcpu)) {
+ 		r = kvm_cpuid_check_equal(vcpu, e2, nent);
+ 		if (r)
+-			return r;
+-
+-		kvfree(e2);
+-		return 0;
++			goto err;
++		goto success;
+ 	}
+ 
+-	if (kvm_cpuid_has_hyperv(e2, nent)) {
++	if (kvm_cpuid_has_hyperv(vcpu)) {
+ 		r = kvm_hv_vcpu_init(vcpu);
+ 		if (r)
+-			return r;
++			goto err;
+ 	}
+ 
+-	r = kvm_check_cpuid(vcpu, e2, nent);
++	r = kvm_check_cpuid(vcpu);
+ 	if (r)
+-		return r;
+-
+-	kvfree(vcpu->arch.cpuid_entries);
+-	vcpu->arch.cpuid_entries = e2;
+-	vcpu->arch.cpuid_nent = nent;
++		goto err;
+ 
+ 	vcpu->arch.kvm_cpuid = kvm_get_hypervisor_cpuid(vcpu, KVM_SIGNATURE);
+ 	vcpu->arch.xen.cpuid = kvm_get_hypervisor_cpuid(vcpu, XEN_SIGNATURE);
+ 	kvm_vcpu_after_set_cpuid(vcpu);
+ 
++success:
++	kvfree(e2);
+ 	return 0;
++
++err:
++	swap(vcpu->arch.cpuid_entries, e2);
++	swap(vcpu->arch.cpuid_nent, nent);
++	return r;
+ }
+ 
+ /* when an old userspace process fills a new kernel module */
+-- 
+2.43.0
+

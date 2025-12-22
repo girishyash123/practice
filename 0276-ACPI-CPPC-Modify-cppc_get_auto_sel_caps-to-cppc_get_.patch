@@ -1,0 +1,112 @@
+From d24494d25451088927ea2b4add4d9f1e1adf3e9e Mon Sep 17 00:00:00 2001
+From: Lifeng Zheng <zhenglifeng1@huawei.com>
+Date: Fri, 11 Apr 2025 17:38:54 +0800
+Subject: [PATCH 276/280] ACPI: CPPC: Modify cppc_get_auto_sel_caps() to
+ cppc_get_auto_sel()
+
+Modify cppc_get_auto_sel_caps() to cppc_get_auto_sel(). Using a
+cppc_perf_caps to carry the value is unnecessary.
+
+Add a check to ensure the pointer 'enable' is not null.
+
+Reviewed-by: Pierre Gondois <pierre.gondois@arm.com>
+Signed-off-by: Lifeng Zheng <zhenglifeng1@huawei.com>
+Reviewed-by: Mario Limonciello <mario.limonciello@amd.com>
+Link: https://patch.msgid.link/20250411093855.982491-8-zhenglifeng1@huawei.com
+Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+---
+ drivers/acpi/cppc_acpi.c     | 18 +++++++++++-------
+ drivers/cpufreq/amd-pstate.c |  3 ++-
+ include/acpi/cppc_acpi.h     |  6 +++---
+ 3 files changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/acpi/cppc_acpi.c b/drivers/acpi/cppc_acpi.c
+index 2c6b53225bc2..eeb3061bfd15 100644
+--- a/drivers/acpi/cppc_acpi.c
++++ b/drivers/acpi/cppc_acpi.c
+@@ -1524,23 +1524,27 @@ int cppc_set_epp_perf(int cpu, struct cppc_perf_ctrls *perf_ctrls, bool enable)
+ EXPORT_SYMBOL_GPL(cppc_set_epp_perf);
+ 
+ /**
+- * cppc_get_auto_sel_caps - Read autonomous selection register.
+- * @cpunum : CPU from which to read register.
+- * @perf_caps : struct where autonomous selection register value is updated.
++ * cppc_get_auto_sel() - Read autonomous selection register.
++ * @cpu: CPU from which to read register.
++ * @enable: Return address.
+  */
+-int cppc_get_auto_sel_caps(int cpunum, struct cppc_perf_caps *perf_caps)
++int cppc_get_auto_sel(int cpu, bool *enable)
+ {
+ 	u64 auto_sel;
+ 	int ret;
+ 
+-	ret = cppc_get_reg_val(cpunum, AUTO_SEL_ENABLE, &auto_sel);
++	if (enable == NULL)
++		return -EINVAL;
++
++	ret = cppc_get_reg_val(cpu, AUTO_SEL_ENABLE, &auto_sel);
+ 	if (ret)
+ 		return ret;
+ 
+-	perf_caps->auto_sel = (bool)auto_sel;
++	*enable = (bool)auto_sel;
++
+ 	return 0;
+ }
+-EXPORT_SYMBOL_GPL(cppc_get_auto_sel_caps);
++EXPORT_SYMBOL_GPL(cppc_get_auto_sel);
+ 
+ /**
+  * cppc_set_auto_sel - Write autonomous selection register.
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+index a06ab27aaaf6..9c4680aeb8b1 100644
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -434,6 +434,7 @@ static int shmem_init_perf(struct amd_cpudata *cpudata)
+ 	struct cppc_perf_caps cppc_perf;
+ 	union perf_cached perf = READ_ONCE(cpudata->perf);
+ 	u64 numerator;
++	bool auto_sel;
+ 
+ 	int ret = cppc_get_perf_caps(cpudata->cpu, &cppc_perf);
+ 	if (ret)
+@@ -455,7 +456,7 @@ static int shmem_init_perf(struct amd_cpudata *cpudata)
+ 	if (cppc_state == AMD_PSTATE_ACTIVE)
+ 		return 0;
+ 
+-	ret = cppc_get_auto_sel_caps(cpudata->cpu, &cppc_perf);
++	ret = cppc_get_auto_sel(cpudata->cpu, &auto_sel);
+ 	if (ret) {
+ 		pr_warn("failed to get auto_sel, ret: %d\n", ret);
+ 		return 0;
+diff --git a/include/acpi/cppc_acpi.h b/include/acpi/cppc_acpi.h
+index b6c497389340..f23a6a0709d4 100644
+--- a/include/acpi/cppc_acpi.h
++++ b/include/acpi/cppc_acpi.h
+@@ -155,7 +155,7 @@ extern int cpc_read_ffh(int cpunum, struct cpc_reg *reg, u64 *val);
+ extern int cpc_write_ffh(int cpunum, struct cpc_reg *reg, u64 val);
+ extern int cppc_get_epp_perf(int cpunum, u64 *epp_perf);
+ extern int cppc_set_epp_perf(int cpu, struct cppc_perf_ctrls *perf_ctrls, bool enable);
+-extern int cppc_get_auto_sel_caps(int cpunum, struct cppc_perf_caps *perf_caps);
++extern int cppc_get_auto_sel(int cpu, bool *enable);
+ extern int cppc_set_auto_sel(int cpu, bool enable);
+ extern int amd_get_highest_perf(unsigned int cpu, u32 *highest_perf);
+ extern int amd_get_boost_ratio_numerator(unsigned int cpu, u64 *numerator);
+@@ -225,11 +225,11 @@ static inline int cppc_get_epp_perf(int cpunum, u64 *epp_perf)
+ {
+ 	return -EOPNOTSUPP;
+ }
+-static inline int cppc_set_auto_sel(int cpu, bool enable)
++static inline int cppc_get_auto_sel(int cpu, bool *enable)
+ {
+ 	return -EOPNOTSUPP;
+ }
+-static inline int cppc_get_auto_sel_caps(int cpunum, struct cppc_perf_caps *perf_caps)
++static inline int cppc_set_auto_sel(int cpu, bool enable)
+ {
+ 	return -EOPNOTSUPP;
+ }
+-- 
+2.43.0
+

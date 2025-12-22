@@ -1,0 +1,49 @@
+From 05a1c57fcdec28561526f7bfb5740b221a4df9fc Mon Sep 17 00:00:00 2001
+From: Thomas Gleixner <tglx@linutronix.de>
+Date: Tue, 13 Feb 2024 22:05:12 +0100
+Subject: [PATCH 094/280] x86/xen/smp_pv: Prepare for separate mpparse
+ callbacks
+
+Provide a wrapper around the existing function and fill the new callbacks
+in.
+
+No functional change as the new callbacks are not yet operational.
+
+Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
+Tested-by: Michael Kelley <mhklinux@outlook.com>
+Tested-by: Sohil Mehta <sohil.mehta@intel.com>
+Link: https://lore.kernel.org/r/20240212154639.745028043@linutronix.de
+---
+ arch/x86/xen/smp_pv.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/arch/x86/xen/smp_pv.c b/arch/x86/xen/smp_pv.c
+index 08c9695b32a4..a9f497249719 100644
+--- a/arch/x86/xen/smp_pv.c
++++ b/arch/x86/xen/smp_pv.c
+@@ -186,6 +186,11 @@ static void __init _get_smp_config(unsigned int early)
+ 	smp_found_config = 1;
+ }
+ 
++static void __init xen_pv_smp_config(void)
++{
++	_get_smp_config(false);
++}
++
+ static void __init xen_pv_smp_prepare_boot_cpu(void)
+ {
+ 	BUG_ON(smp_processor_id() != 0);
+@@ -458,6 +463,8 @@ void __init xen_smp_init(void)
+ 	smp_ops = xen_smp_ops;
+ 
+ 	/* Avoid searching for BIOS MP tables */
+-	x86_init.mpparse.find_mptable = x86_init_noop;
+-	x86_init.mpparse.get_smp_config = _get_smp_config;
++	x86_init.mpparse.find_mptable		= x86_init_noop;
++	x86_init.mpparse.early_parse_smp_cfg	= x86_init_noop;
++	x86_init.mpparse.parse_smp_cfg		= xen_pv_smp_config;
++	x86_init.mpparse.get_smp_config		= _get_smp_config;
+ }
+-- 
+2.43.0
+

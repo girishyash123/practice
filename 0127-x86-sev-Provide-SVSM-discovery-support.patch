@@ -1,0 +1,109 @@
+From 677df2f3c7bfad4da81bb02dd639c1dc1af7820e Mon Sep 17 00:00:00 2001
+From: Tom Lendacky <thomas.lendacky@amd.com>
+Date: Wed, 5 Jun 2024 10:18:49 -0500
+Subject: [PATCH 127/280] x86/sev: Provide SVSM discovery support
+
+The SVSM specification documents an alternative method of discovery for
+the SVSM using a reserved CPUID bit and a reserved MSR. This is intended
+for guest components that do not have access to the secrets page in
+order to be able to call the SVSM (e.g. UEFI runtime services).
+
+For the MSR support, a new reserved MSR 0xc001f000 has been defined. A #VC
+should be generated when accessing this MSR. The #VC handler is expected
+to ignore writes to this MSR and return the physical calling area address
+(CAA) on reads of this MSR.
+
+While the CPUID leaf is updated, allowing the creation of a CPU feature,
+the code will continue to use the VMPL level as an indication of the
+presence of an SVSM. This is because the SVSM can be called well before
+the CPU feature is in place and a non-zero VMPL requires that an SVSM be
+present.
+
+Signed-off-by: Tom Lendacky <thomas.lendacky@amd.com>
+Signed-off-by: Borislav Petkov (AMD) <bp@alien8.de>
+Link: https://lore.kernel.org/r/4f93f10a2ff3e9f368fd64a5920d51bf38d0c19e.1717600736.git.thomas.lendacky@amd.com
+---
+ arch/x86/include/asm/cpufeatures.h |  1 +
+ arch/x86/include/asm/msr-index.h   |  2 ++
+ arch/x86/kernel/sev-shared.c       | 11 +++++++++++
+ arch/x86/kernel/sev.c              | 11 +++++++++++
+ 4 files changed, 25 insertions(+)
+
+diff --git a/arch/x86/include/asm/cpufeatures.h b/arch/x86/include/asm/cpufeatures.h
+index 32c8afa06682..d4073ce1dc41 100644
+--- a/arch/x86/include/asm/cpufeatures.h
++++ b/arch/x86/include/asm/cpufeatures.h
+@@ -445,6 +445,7 @@
+ #define X86_FEATURE_V_TSC_AUX		(19*32+ 9) /* "" Virtual TSC_AUX */
+ #define X86_FEATURE_SME_COHERENT	(19*32+10) /* "" AMD hardware-enforced cache coherency */
+ #define X86_FEATURE_DEBUG_SWAP		(19*32+14) /* AMD SEV-ES full debug state swap support */
++#define X86_FEATURE_SVSM		(19*32+28) /* SVSM present */
+ 
+ /* AMD-defined Extended Feature 2 EAX, CPUID level 0x80000021 (EAX), word 20 */
+ #define X86_FEATURE_NO_NESTED_DATA_BP	(20*32+ 0) /* "" No Nested Data Breakpoints */
+diff --git a/arch/x86/include/asm/msr-index.h b/arch/x86/include/asm/msr-index.h
+index 453ab4b9db8a..3a6dd0c6550b 100644
+--- a/arch/x86/include/asm/msr-index.h
++++ b/arch/x86/include/asm/msr-index.h
+@@ -640,6 +640,8 @@
+ #define MSR_AMD64_RMP_BASE		0xc0010132
+ #define MSR_AMD64_RMP_END		0xc0010133
+ 
++#define MSR_SVSM_CAA			0xc001f000
++
+ /* AMD Collaborative Processor Performance Control MSRs */
+ #define MSR_AMD_CPPC_CAP1		0xc00102b0
+ #define MSR_AMD_CPPC_ENABLE		0xc00102b1
+diff --git a/arch/x86/kernel/sev-shared.c b/arch/x86/kernel/sev-shared.c
+index 7933c1203b63..9213ce805d51 100644
+--- a/arch/x86/kernel/sev-shared.c
++++ b/arch/x86/kernel/sev-shared.c
+@@ -1648,6 +1648,8 @@ static enum es_result vc_check_opcode_bytes(struct es_em_ctxt *ctxt,
+ static bool __head svsm_setup_ca(const struct cc_blob_sev_info *cc_info)
+ {
+ 	struct snp_secrets_page *secrets_page;
++	struct snp_cpuid_table *cpuid_table;
++	unsigned int i;
+ 	u64 caa;
+ 
+ 	BUILD_BUG_ON(sizeof(*secrets_page) != PAGE_SIZE);
+@@ -1701,5 +1703,14 @@ static bool __head svsm_setup_ca(const struct cc_blob_sev_info *cc_info)
+ 	RIP_REL_REF(boot_svsm_caa) = (struct svsm_ca *)caa;
+ 	RIP_REL_REF(boot_svsm_caa_pa) = caa;
+ 
++	/* Advertise the SVSM presence via CPUID. */
++	cpuid_table = (struct snp_cpuid_table *)snp_cpuid_get_table();
++	for (i = 0; i < cpuid_table->count; i++) {
++		struct snp_cpuid_fn *fn = &cpuid_table->fn[i];
++
++		if (fn->eax_in == 0x8000001f)
++			fn->eax |= BIT(28);
++	}
+ 	return true;
++
+ }
+diff --git a/arch/x86/kernel/sev.c b/arch/x86/kernel/sev.c
+index d74b939ba515..0b6f4da8f2d3 100644
+--- a/arch/x86/kernel/sev.c
++++ b/arch/x86/kernel/sev.c
+@@ -1340,6 +1340,17 @@ static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
+ 	/* Is it a WRMSR? */
+ 	exit_info_1 = (ctxt->insn.opcode.bytes[1] == 0x30) ? 1 : 0;
+ 
++	if (regs->cx == MSR_SVSM_CAA) {
++		/* Writes to the SVSM CAA msr are ignored */
++		if (exit_info_1)
++			return ES_OK;
++
++		regs->ax = lower_32_bits(this_cpu_read(svsm_caa_pa));
++		regs->dx = upper_32_bits(this_cpu_read(svsm_caa_pa));
++
++		return ES_OK;
++	}
++
+ 	ghcb_set_rcx(ghcb, regs->cx);
+ 	if (exit_info_1) {
+ 		ghcb_set_rax(ghcb, regs->ax);
+-- 
+2.43.0
+
