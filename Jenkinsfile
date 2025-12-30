@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     stages {
-        stage('Checkout') {
+        stage('Info') {
             steps {
-                echo 'Code checked out'
+                sh 'echo "Branch: $BRANCH_NAME"'
             }
         }
 
@@ -20,13 +20,5 @@ pipeline {
             }
         }
     }
-
-    post {
-        success {
-            echo 'Build successful'
-        }
-        failure {
-            echo 'Build failed'
-        }
-    }
 }
+
